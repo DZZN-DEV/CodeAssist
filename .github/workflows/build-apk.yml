@@ -1,41 +1,45 @@
-name: Android CI
+name: Build Android APK
+run-name: ${{ github.event.inputs.repository }}:${{ github.event.inputs.taskName }}
 
 on:
-  pull_request:
   workflow_dispatch:
+    inputs:
+      repository:
+        description: "Git repository URL"
+        required: true
+        default: "https://github.com/DZZN-DEV/CodeAssist/"
+      jdkVersion:
+        description: "OpenJDK version to use: 8 / 11 / 17 etc."
+        required: false
+        default: "11"
+      taskName:
+        description: "build.gradle task name: assemble[Flavor]Debug"
+        required: false
+        default: "assembleDebug"
 
 jobs:
   build:
-    name: Build debug apk
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest # Android SDK is built-in in this image
     steps:
-      - name: Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.5.0
+      - name: Setup JDK
+        uses: actions/setup-java@v3
         with:
-          access_token: ${{ github.token }}
+          distribution: "temurin"
+          java-version: ${{ github.event.inputs.jdkVersion }}
 
-      - uses: actions/checkout@v2
-    
-      - name: set up JDK 11
-        uses: actions/setup-java@v2
+      - name: Clone project
+        run: git clone --depth=1 ${{ github.event.inputs.repository }} workspace
+
+      - name: Build APK
+        working-directory: ./workspace
+        run: |
+          if [ ! -f "gradlew" ]; then gradle wrapper; fi
+          chmod +x gradlew
+          ./gradlew ${{ github.event.inputs.taskName }} --stacktrace
+
+      - name: Upload the APK artifact with 1 day retention
+        uses: actions/upload-artifact@v3
         with:
-          java-version: '11'
-          distribution: 'adopt'
-          cache: gradle
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build debug apk
-        uses: eskatos/gradle-command-action@v1
-        with:
-          arguments: assembleDebug
-          distributions-cache-enabled: true
-          dependencies-cache-enabled: true
-          configuration-cache-enabled: true
-
-      - name: Upload debug apk
-        uses: actions/upload-artifact@v2
-        with:
-          name: apk-debug
-          path: app/build/outputs/apk/debug
+          path: ./**/*.apk
+          name: apk-archive
+          retention-days: 1
